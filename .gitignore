@@ -1,0 +1,9 @@
+# environment
+.env
+
+# dependencies
+/vendor
+/node_modules
+
+# database data
+/dbdata
