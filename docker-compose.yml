@@ -1,0 +1,37 @@
+services:
+  app:
+    build: .
+    container_name: bunshop_app
+    env_file:
+      - .env
+    volumes:
+      - ./:/var/www/html
+    depends_on:
+      - db
+    networks: [bunshop]
+  web:
+    image: nginx:1.27-alpine
+    container_name: bunshop_web
+    volumes:
+      - ./:/var/www/html
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "8080:80"
+    depends_on:
+      - app
+    networks: [bunshop]
+  db:
+    image: postgres:16-alpine
+    container_name: bunshop_db
+    environment:
+      POSTGRES_DB: ${DB_DATABASE}
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - dbdata:/var/lib/postgresql/data
+    networks: [bunshop]
+volumes:
+  dbdata:
+networks:
+  bunshop:
+
