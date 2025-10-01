@@ -18,9 +18,11 @@ $capsule->addConnection([
 $capsule->setAsGlobal();
 $capsule->bootEloquent();
 
+$now = date('c');
+
 Capsule::table('products')->insert([
-  ['name' => 'Bułki 10 szt.', 'pack_size' => 10, 'gross_price' => 19.90, 'is_active' => true, 'created_at'=>now(), 'updated_at'=>now()],
-  ['name' => 'Bułki 30 szt.', 'pack_size' => 30, 'gross_price' => 54.90, 'is_active' => true, 'created_at'=>now(), 'updated_at'=>now()],
+  ['name' => 'Bułki 10 szt.', 'pack_size' => 10, 'gross_price' => 19.90, 'is_active' => true, 'created_at'=>$now, 'updated_at'=>$now],
+  ['name' => 'Bułki 30 szt.', 'pack_size' => 30, 'gross_price' => 54.90, 'is_active' => true, 'created_at'=>$now, 'updated_at'=>$now],
 ]);
 
 $today = new DateTimeImmutable('today');

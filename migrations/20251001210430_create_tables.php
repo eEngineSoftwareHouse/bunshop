@@ -7,7 +7,7 @@ final class CreateTables extends AbstractMigration
 {
     public function change(): void
     {
-        // products (np. "10 szt.", "30 szt.")
+        // products
         $this->table('products')
             ->addColumn('name', 'string', ['limit' => 120])
             ->addColumn('pack_size', 'integer', ['null' => true])
@@ -16,49 +16,55 @@ final class CreateTables extends AbstractMigration
             ->addTimestamps()
             ->create();
 
-        // pickup/shipping windows (data + typ + limit)
+        // pickup_windows (kind: pickup|shipping)
         $this->table('pickup_windows')
             ->addColumn('date', 'date')
-            ->addColumn('kind', 'enum', ['values' => ['pickup', 'shipping']])
-            ->addColumn('capacity', 'integer') // łączna dostępna liczba sztuk (albo paczek)
-            ->addColumn('cutoff_at', 'datetime', ['null' => true]) // jeśli null, liczony z DEFAULT_PICKUP_CUTOFF_HOUR
+            ->addColumn('kind', 'string', ['limit' => 16]) // zamiast enum
+            ->addColumn('capacity', 'integer')             // limit w sztukach (sumarycznie)
+            ->addColumn('cutoff_at', 'datetime', ['null' => true])
             ->addIndex(['date','kind'], ['unique' => true])
             ->addTimestamps()
             ->create();
 
-        // jeśli chcesz limit per produkt na daną datę — odkomentuj i używaj zamiast capacity globalnego
-        // $this->table('inventory')
-        //     ->addColumn('pickup_window_id', 'integer')
-        //     ->addColumn('product_id', 'integer')
-        //     ->addColumn('capacity', 'integer')
-        //     ->addIndex(['pickup_window_id','product_id'], ['unique' => true])
-        //     ->create();
-
+        // orders (status: pending|paid|canceled)
         $this->table('orders')
-            ->addColumn('status', 'enum', ['values' => ['pending','paid','canceled'], 'default' => 'pending'])
+            ->addColumn('status', 'string', ['limit' => 16, 'default' => 'pending'])
             ->addColumn('customer_email', 'string', ['limit' => 190])
-            ->addColumn('shipping_address_json', 'text', ['null' => true]) // JSON dla wysyłki
+            ->addColumn('shipping_address_json', 'text', ['null' => true])
             ->addColumn('pickup_window_id', 'integer')
             ->addColumn('notes', 'string', ['limit' => 500, 'null' => true])
             ->addColumn('stripe_session_id', 'string', ['limit' => 255, 'null' => true])
             ->addColumn('stripe_payment_intent', 'string', ['limit' => 255, 'null' => true])
             ->addColumn('expires_at', 'datetime', ['null' => true])
             ->addTimestamps()
+            ->addIndex(['pickup_window_id'])
             ->create();
 
+        // order_items
         $this->table('order_items')
             ->addColumn('order_id', 'integer')
             ->addColumn('product_id', 'integer')
             ->addColumn('qty', 'integer')
             ->addColumn('unit_price', 'decimal', ['precision' => 10, 'scale' => 2])
             ->addTimestamps()
+            ->addIndex(['order_id'])
+            ->addIndex(['product_id'])
             ->create();
 
-        // prosty widok dostępności (dla global capacity)
+        // CHECK constraints (enum-like)
+        $this->execute("ALTER TABLE pickup_windows ADD CONSTRAINT chk_pickup_windows_kind CHECK (kind IN ('pickup','shipping'));");
+        $this->execute("ALTER TABLE orders ADD CONSTRAINT chk_orders_status CHECK (status IN ('pending','paid','canceled'));");
+
+        // (opcjonalnie FK – bez ON DELETE CASCADE, żeby prosto)
+        $this->execute("ALTER TABLE orders      ADD CONSTRAINT fk_orders_pickup_window  FOREIGN KEY (pickup_window_id) REFERENCES pickup_windows(id);");
+        $this->execute("ALTER TABLE order_items ADD CONSTRAINT fk_items_order           FOREIGN KEY (order_id)        REFERENCES orders(id);");
+        $this->execute("ALTER TABLE order_items ADD CONSTRAINT fk_items_product         FOREIGN KEY (product_id)      REFERENCES products(id);");
+
+        // Widok dostępności (global capacity)
         $this->execute("
-          CREATE VIEW vw_capacity AS
+          CREATE OR REPLACE VIEW vw_capacity AS
           SELECT
-            pw.id as pickup_window_id,
+            pw.id AS pickup_window_id,
             pw.capacity
               - COALESCE((
                   SELECT SUM(oi.qty * COALESCE(p.pack_size, 1))
@@ -66,11 +72,10 @@ final class CreateTables extends AbstractMigration
                   JOIN order_items oi ON oi.order_id = o.id
                   JOIN products p ON p.id = oi.product_id
                   WHERE o.pickup_window_id = pw.id
-                  AND o.status IN ('pending','paid')
-                  AND (o.expires_at IS NULL OR o.expires_at > NOW())
+                    AND o.status IN ('pending','paid')
+                    AND (o.expires_at IS NULL OR o.expires_at > NOW())
                 ), 0) AS remaining
           FROM pickup_windows pw;
         ");
     }
 }
-
